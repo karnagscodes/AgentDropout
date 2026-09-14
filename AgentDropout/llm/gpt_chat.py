@@ -1,4 +1,5 @@
 import aiohttp
+import time
 from typing import List, Union, Optional
 from tenacity import retry, wait_random_exponential, stop_after_attempt, wait_fixed
 from typing import Dict, Any
@@ -9,14 +10,17 @@ import async_timeout
 from transformers import AutoTokenizer
 
 from AgentDropout.llm.format import Message
-from AgentDropout.llm.price import cost_count, cost_count_llama3, cost_count_deepseek
+from AgentDropout.llm.price import cost_count, cost_count_llama3, cost_count_deepseek, cost_count_usage
+from AgentDropout.utils import instrument
 from AgentDropout.llm.llm import LLM
 from AgentDropout.llm.llm_registry import LLMRegistry
 
 
 load_dotenv()
-MINE_BASE_URL = ""
-MINE_API_KEYS = ""
+# Read from .env (see template.env). load_dotenv() above populates these.
+# base_url=None makes the client use the default OpenAI endpoint.
+MINE_BASE_URL = os.getenv("BASE_URL") or None
+MINE_API_KEYS = os.getenv("API_KEY", "")
 
 # print(MINE_BASE_URL)
 
@@ -52,18 +56,33 @@ MINE_API_KEYS = ""
 async def achat(model: str, msg: List[Dict],):
     api_kwargs = dict(api_key = MINE_API_KEYS, base_url = MINE_BASE_URL)
     aclient = AsyncOpenAI(**api_kwargs)
-    try:
-        async with async_timeout.timeout(1000):
-            completion = await aclient.chat.completions.create(model=model,messages=msg)
-        response_message = completion.choices[0].message.content
-        
-        if isinstance(response_message, str):
-            prompt = "".join([item['content'] for item in msg])
-            cost_count(prompt, response_message, model)
-            return response_message
+    started = time.perf_counter()
+    async with async_timeout.timeout(1000):
+        completion = await aclient.chat.completions.create(model=model, messages=msg)
 
-    except Exception as e:
-        raise RuntimeError(f"Failed to complete the async chat request: {e}")
+    response_message = completion.choices[0].message.content
+    if not isinstance(response_message, str):
+        # Previously this fell off the end and returned None, which then landed
+        # in the next agent's prompt as the literal text "None".
+        raise RuntimeError(f"Non-string completion content: {type(response_message)}")
+
+    usage = completion.usage
+    cost_count_usage(usage.prompt_tokens, usage.completion_tokens, model)
+    instrument.log(
+        "calls",
+        node_id=instrument.CTX_NODE_ID.get(),
+        node_name=instrument.CTX_NODE_NAME.get(),
+        role=instrument.CTX_ROLE.get(),
+        is_decision=instrument.CTX_IS_DEC.get(),
+        model=model,
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+        latency_s=round(time.perf_counter() - started, 3),
+        system_prompt=msg[0]["content"] if msg else "",
+        user_prompt=msg[-1]["content"] if msg else "",
+        response=response_message,
+    )
+    return response_message
 
 # @retry(wait=wait_random_exponential(max=100), stop=stop_after_attempt(6))
 async def achat_deepseek(model: str, msg: List[Dict],):

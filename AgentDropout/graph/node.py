@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 import warnings
 import asyncio
 
+from AgentDropout.utils import instrument
+
 
 class Node(ABC):
     """
@@ -154,12 +156,79 @@ class Node(ABC):
         return self.outputs
 
 
+    def _render_len(self, raw_inputs, spatial_info, temporal_info) -> int:
+        """Token length of the prompt this node's own renderer would build."""
+        rendered = self._process_inputs(raw_inputs, spatial_info, temporal_info)
+        if not isinstance(rendered, (tuple, list)):
+            rendered = (rendered,)
+        return sum(instrument.count_tokens(part) for part in rendered if isinstance(part, str))
+
+    def _log_edge_costs(self, raw_inputs, spatial_info, temporal_info):
+        """Attribute prompt tokens to the predecessors that contributed them.
+
+        Rendering with one predecessor and subtracting the empty render gives
+        the segment cost as this node actually formats it, which matters
+        because roles differ: Math Solver receives an extracted number while
+        every other role receives the full verbatim output.
+        """
+        try:
+            base = self._render_len(raw_inputs, {}, {})
+            full = self._render_len(raw_inputs, spatial_info, temporal_info)
+        except Exception as exc:
+            instrument.log("edges_error", node_id=self.id,
+                           node_name=self.node_name, error=repr(exc))
+            return
+
+        for kind, info in (("spatial", spatial_info), ("temporal", temporal_info)):
+            for sender_id, meta in info.items():
+                only = {sender_id: meta}
+                try:
+                    with_one = (self._render_len(raw_inputs, only, {}) if kind == "spatial"
+                                else self._render_len(raw_inputs, {}, only))
+                except Exception as exc:
+                    instrument.log("edges_error", node_id=self.id, sender_id=sender_id,
+                                   error=repr(exc))
+                    continue
+                output = meta.get("output", "") if isinstance(meta, dict) else ""
+                instrument.log(
+                    "edges",
+                    edge_type=kind,
+                    sender_id=sender_id,
+                    sender_role=meta.get("role", "") if isinstance(meta, dict) else "",
+                    receiver_id=self.id,
+                    receiver_name=self.node_name,
+                    receiver_role=self.role,
+                    rendered_segment_tokens=with_one - base,
+                    sender_output_tokens=instrument.count_tokens(output),
+                    sender_output=output,
+                )
+
+        instrument.log(
+            "prompt_build",
+            node_id=self.id,
+            node_name=self.node_name,
+            role=self.role,
+            base_prompt_tokens=base,
+            full_prompt_tokens=full,
+            n_spatial=len(spatial_info),
+            n_temporal=len(temporal_info),
+        )
+
     async def async_execute(self, input:Any, **kwargs):
 
         self.outputs = []
         spatial_info:Dict[str,Any] = self.get_spatial_info()
         temporal_info:Dict[str,Any] = self.get_temporal_info()
         # print(temporal_info)
+        # Set identity, then create the task. create_task snapshots the context,
+        # so concurrently executing nodes each see their own values. Do not move
+        # these lines or insert an await before create_task.
+        instrument.CTX_NODE_ID.set(self.id)
+        instrument.CTX_NODE_NAME.set(self.node_name)
+        self._log_edge_costs(input, spatial_info, temporal_info)
+        # Set role after rendering: some agents (FinalRefer) assign self.role
+        # inside _process_inputs, so reading it earlier logs an empty string.
+        instrument.CTX_ROLE.set(self.role)
         tasks = [asyncio.create_task(self._async_execute(input, spatial_info, temporal_info, **kwargs))]
         results = await asyncio.gather(*tasks, return_exceptions=False)
         for result in results:

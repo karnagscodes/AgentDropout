@@ -34,9 +34,9 @@ from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
 from pptx import Presentation
 
-from AgentPrune.llm import VisualLLMRegistry
-from AgentPrune.utils.log import logger
-from AgentPrune.utils.globals import Cost
+from AgentDropout.llm import VisualLLMRegistry
+from AgentDropout.utils.log import logger
+from AgentDropout.utils.globals import Cost
 
 from dotenv import load_dotenv
 load_dotenv()

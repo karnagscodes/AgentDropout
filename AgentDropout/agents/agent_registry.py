@@ -1,7 +1,7 @@
 from typing import Type
 from class_registry import ClassRegistry
 
-from AgentPrune.graph import Node
+from AgentDropout.graph import Node
 
 
 class AgentRegistry:

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from pytube import YouTube
-from AgentPrune.utils.const import AgentPrune_ROOT
+from AgentDropout.utils.const import AgentPrune_ROOT
 
 def Youtube(url, has_subtitles):
     # get video id from url

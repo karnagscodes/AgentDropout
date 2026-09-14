@@ -16,6 +16,34 @@ def cal_token_llama3(tokenizer, text:str):
     num_tokens = len(tokenizer(text, return_tensors='pt')['input_ids'][0])
     return num_tokens
 
+_price_warned = set()
+
+
+def cost_count_usage(prompt_len: int, completion_len: int, model_name: str):
+    """Record token counts reported by the server.
+
+    Replaces cost_count for the OpenAI path. cost_count re-tokenizes a
+    string-joined reconstruction of the prompt, which drops role markers and
+    chat-template overhead, and silently records zeros for any model whose
+    name matches neither "gpt-4" nor "gpt-3.5". Tokens are recorded here even
+    when the price is unknown, because tokens are the measurement.
+    """
+    price = 0.0
+    for table in OPENAI_MODEL_INFO.values():
+        entry = table.get(model_name)
+        if isinstance(entry, dict):
+            price = (prompt_len * entry["input"] + completion_len * entry["output"]) / 1000
+            break
+    else:
+        if model_name not in _price_warned:
+            _price_warned.add(model_name)
+            print(f"[price] no entry for '{model_name}'; tokens recorded, cost left at 0")
+
+    Cost.instance().value += price
+    PromptTokens.instance().value += prompt_len
+    CompletionTokens.instance().value += completion_len
+
+
 def cost_count(prompt, response, model_name):
     branch: str
     prompt_len: int

@@ -6,6 +6,7 @@ import torch
 import asyncio
 
 from AgentDropout.graph.node import Node
+from AgentDropout.utils import instrument
 from AgentDropout.agents.agent_registry import AgentRegistry
 import random
 
@@ -359,10 +360,13 @@ class Graph(ABC):
                   skip: bool=False,
                   case: bool=False) -> List[Any]:
         # inputs:{'task':"xxx"}
+        instrument.CTX_QUESTION.set(instrument.qid(input))
+        instrument.CTX_IS_DEC.set(False)
         log_probs = 0
         log_probs_skip = 0
         all_answers = []
         for round in range(num_rounds):
+            instrument.CTX_ROUND.set(round)
             round_answers = {}
             if not self.diff:
                 log_probs += self.construct_spatial_connection()
@@ -483,8 +487,11 @@ class Graph(ABC):
         
         # if self.dec_1==False:
         if len(self.potential_spatial_edges)>0:
+            instrument.CTX_ROUND.set(num_rounds)
+            instrument.CTX_IS_DEC.set(True)
             self.connect_decision_node()
             await self.decision_node.async_execute(input)
+            instrument.CTX_IS_DEC.set(False)
             final_answers = self.decision_node.outputs
         else:
             final_answers = list(self.nodes.values())[0].outputs
