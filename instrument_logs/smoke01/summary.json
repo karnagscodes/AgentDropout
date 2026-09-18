@@ -1,0 +1,28 @@
+{
+  "run": "smoke01",
+  "git_commit": null,
+  "git_dirty": null,
+  "argv": null,
+  "questions": 10,
+  "calls": 90,
+  "tokens_total": 148394,
+  "tokens_prompt": 121370,
+  "tokens_completion": 27024,
+  "tokens_per_question": 14839.4,
+  "decision_share_tokens": 0.1393,
+  "accuracy": 0.9,
+  "accuracy_n": 10,
+  "segment_min": 70,
+  "segment_median": 302.0,
+  "segment_max": 863,
+  "segment_mean": 333.0,
+  "segment_max_over_median": 2.86,
+  "mean_output_by_sender_role": {
+    "Mathematical Analyst": 433.4,
+    "Inspector": 398.7,
+    "Math Solver": 273.6,
+    "Programming Expert": 131.9
+  },
+  "repeated_calls": 10,
+  "repeated_call_token_share": 0.0819
+}

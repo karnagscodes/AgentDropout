@@ -1,4 +1,4 @@
-instrument_logs/
+instrument_logs/**/*.jsonl
 .env
 __pycache__/
 datasets/*/
