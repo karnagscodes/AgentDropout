@@ -453,8 +453,13 @@ async def main():
         
         for task, answer, log_prob, add_loss, true_answer in zip(current_batch, raw_answers, log_probs, add_losses, answers):
             predict_answer = gsm_get_predict(answer[0])
-            is_solved = float(predict_answer)==float(true_answer)
-            # is_solved = predict_answer==true_answer
+            # A failed node leaves an empty/unparseable answer. Crashing here
+            # discards every remaining batch, so score it as unsolved instead.
+            try:
+                is_solved = float(predict_answer)==float(true_answer)
+            except (TypeError, ValueError):
+                is_solved = False
+                print(f"[eval] unparseable answer {predict_answer!r}; scored as unsolved")
             total_solved = total_solved + is_solved
             total_executed = total_executed + 1
             accuracy = total_solved/ total_executed

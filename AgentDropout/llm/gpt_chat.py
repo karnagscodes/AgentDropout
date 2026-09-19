@@ -57,8 +57,16 @@ async def achat(model: str, msg: List[Dict],):
     api_kwargs = dict(api_key = MINE_API_KEYS, base_url = MINE_BASE_URL)
     aclient = AsyncOpenAI(**api_kwargs)
     started = time.perf_counter()
-    async with async_timeout.timeout(1000):
-        completion = await aclient.chat.completions.create(model=model, messages=msg)
+    try:
+        async with async_timeout.timeout(1000):
+            completion = await aclient.chat.completions.create(model=model, messages=msg)
+    except Exception as exc:
+        instrument.log("call_error", node_id=instrument.CTX_NODE_ID.get(),
+                       node_name=instrument.CTX_NODE_NAME.get(), role=instrument.CTX_ROLE.get(),
+                       is_decision=instrument.CTX_IS_DEC.get(), model=model,
+                       error=repr(exc)[:500],
+                       latency_s=round(time.perf_counter() - started, 3))
+        raise
 
     response_message = completion.choices[0].message.content
     if not isinstance(response_message, str):

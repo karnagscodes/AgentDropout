@@ -9,7 +9,7 @@ logs. We join on a hash of the task text, which is how question_id is built,
 so the join survives renamed or re-timestamped result files.
 """
 import argparse, glob, hashlib, json, os, statistics as st
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -19,10 +19,21 @@ def _rows(d, name):
     return [json.loads(l) for l in open(p, encoding="utf-8")] if os.path.exists(p) else []
 
 
-def _correctness(qids):
-    """Best-matching result file, as {question_id: solved}."""
+def _correctness(qids, stamp=None):
+    """Correctness as {question_id: solved}.
+
+    The repo names its result file <domain>_llama3_<Time>.json, and the manifest
+    records that same Time value, so an exact filename match is possible. Hash
+    overlap alone is ambiguous whenever one run's questions are a subset of
+    another's, which silently attributed the smoke run's accuracy to the wrong file.
+    """
+    paths = glob.glob(os.path.join(ROOT, "result", "*", "*.json"))
+    if stamp:
+        exact = [p for p in paths if p.endswith(f"_{stamp}.json")]
+        if exact:
+            paths = exact
     best = {}
-    for path in glob.glob(os.path.join(ROOT, "result", "*", "*.json")):
+    for path in paths:
         try:
             data = json.load(open(path, encoding="utf-8"))
         except Exception:
@@ -52,7 +63,7 @@ def summarize(d):
     tok = lambda rs: sum(r["prompt_tokens"] + r["completion_tokens"] for r in rs)
     dec = [c for c in calls if c["is_decision"]]
     total = tok(calls)
-    solved = _correctness(qids)
+    solved = _correctness(qids, manifest.get("repo_time_stamp"))
 
     by_sender = defaultdict(list)
     for e in edges:
@@ -67,8 +78,19 @@ def summarize(d):
             repeats.append(c)
         seen[key] = True
 
+    # Completeness. A run that loses calls still produces plausible-looking
+    # numbers, so this has to be checked rather than assumed.
+    per_q = Counter(c["question_id"] for c in calls)
+    expected = Counter(per_q.values()).most_common(1)[0][0] if per_q else 0
+    incomplete = sorted(q for q, n in per_q.items() if n != expected)
+    errors = _rows(d, "call_error")
+
     s = {
         "run": os.path.basename(os.path.normpath(d)),
+        "complete": not incomplete and not errors,
+        "calls_per_question_expected": expected,
+        "incomplete_questions": len(incomplete),
+        "call_errors": len(errors),
         "git_commit": manifest.get("git_commit"),
         "git_dirty": manifest.get("git_dirty"),
         "argv": manifest.get("argv"),
@@ -81,6 +103,7 @@ def summarize(d):
         "decision_share_tokens": round(tok(dec) / max(total, 1), 4),
         "accuracy": round(sum(solved.values()) / len(solved), 4) if solved else None,
         "accuracy_n": len(solved),
+        "accuracy_source": "exact" if manifest.get("repo_time_stamp") else "hash-overlap (ambiguous)",
         "segment_min": min(segs), "segment_median": st.median(segs), "segment_max": max(segs),
         "segment_mean": round(st.mean(segs), 1),
         "segment_max_over_median": round(max(segs) / max(st.median(segs), 1), 2),
@@ -109,13 +132,18 @@ def main():
         except SystemExit as e:
             print(e)
     if a.all:
-        hdr = ["run", "questions", "accuracy", "tokens_per_question",
+        hdr = ["run", "complete", "questions", "accuracy", "tokens_per_question",
                "decision_share_tokens", "segment_max_over_median", "repeated_call_token_share"]
         print(" | ".join(h[:22].ljust(22) for h in hdr))
         for s in out:
             print(" | ".join(str(s.get(h))[:22].ljust(22) for h in hdr))
     else:
         print(json.dumps(out[0], indent=2))
+    for r in out:
+        if not r["complete"]:
+            print(f"\n!! {r['run']}: INCOMPLETE — {r['incomplete_questions']} questions short "
+                  f"of {r['calls_per_question_expected']} calls, {r['call_errors']} failed calls. "
+                  f"Token and accuracy figures cover only what survived.")
 
 
 if __name__ == "__main__":

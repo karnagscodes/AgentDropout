@@ -1,0 +1,41 @@
+{
+  "started_utc": "2026-09-18T03:33:04.808593+00:00",
+  "run_tag": "gsm8k_full_r2",
+  "argv": [
+    "experiments/run_gsm8k.py",
+    "--dataset_json",
+    "datasets/gsm8k/gsm8k_eval100.jsonl",
+    "--mode",
+    "FullConnected",
+    "--batch_size",
+    "10",
+    "--num_rounds",
+    "2",
+    "--agent_names",
+    "MathSolver",
+    "--agent_nums",
+    "4",
+    "--llm_name",
+    "gpt-4o-mini",
+    "--domain",
+    "gsm8k"
+  ],
+  "cwd": "/Users/karthiknagesh/Documents/GitHub/OMSCS/CS8903/AgentDropout",
+  "env": {
+    "INSTRUMENT_DIR": "instrument_logs/gsm8k_full_r2",
+    "INSTRUMENT_MODEL": "gpt-4o-mini",
+    "PYTHONPATH": "."
+  },
+  "git_commit": "172e65055655b5a4ee3fa46aaa76882aadd93608",
+  "git_branch": "instrumentation",
+  "git_dirty": false,
+  "repo_time_stamp": "2026-09-17-23-33-04",
+  "python": "3.13.9",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "packages": {
+    "openai": "3.13.0",
+    "torch": "2.14.0",
+    "tiktoken": "0.14.0",
+    "transformers": "5.17.0"
+  }
+}
